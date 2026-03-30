@@ -10,11 +10,11 @@
 
 s03 的 TodoManager 只是内存中的扁平清单: 没有顺序、没有依赖、状态只有做完没做完。真实目标是有结构的 -- 任务 B 依赖任务 A, 任务 C 和 D 可以并行, 任务 E 要等 C 和 D 都完成。
 
-没有显式的关系, 智能体分不清什么能做、什么被卡住、什么能同时跑。而且清单只活在内存里, 上下文压缩 (s06) 一跑就没了。
+没有显式的关系, Agent 分不清什么能做、什么被卡住、什么能同时跑。而且清单只活在内存里, 上下文压缩 (s06) 一跑就没了。
 
 ## 解决方案
 
-把扁平清单升级为持久化到磁盘的**任务图**。每个任务是一个 JSON 文件, 有状态、前置依赖 (`blockedBy`) 和后置依赖 (`blocks`)。任务图随时回答三个问题:
+把扁平清单升级为持久化到磁盘的**任务图**。每个任务是一个 JSON 文件, 有状态、前置依赖 (`blockedBy`)。任务图随时回答三个问题:
 
 - **什么可以做?** -- 状态为 `pending` 且 `blockedBy` 为空的任务。
 - **什么被卡住?** -- 等待前置任务完成的任务。
@@ -60,7 +60,7 @@ class TaskManager:
     def create(self, subject, description=""):
         task = {"id": self._next_id, "subject": subject,
                 "status": "pending", "blockedBy": [],
-                "blocks": [], "owner": ""}
+                "owner": ""}
         self._save(task)
         self._next_id += 1
         return json.dumps(task, indent=2)
@@ -81,12 +81,16 @@ def _clear_dependency(self, completed_id):
 
 ```python
 def update(self, task_id, status=None,
-           add_blocked_by=None, add_blocks=None):
+           add_blocked_by=None, remove_blocked_by=None):
     task = self._load(task_id)
     if status:
         task["status"] = status
         if status == "completed":
             self._clear_dependency(task_id)
+    if add_blocked_by:
+        task["blockedBy"] = list(set(task["blockedBy"] + add_blocked_by))
+    if remove_blocked_by:
+        task["blockedBy"] = [x for x in task["blockedBy"] if x not in remove_blocked_by]
     self._save(task)
 ```
 
@@ -110,7 +114,7 @@ TOOL_HANDLERS = {
 |---|---|---|
 | Tools | 5 | 8 (`task_create/update/list/get`) |
 | 规划模型 | 扁平清单 (仅内存) | 带依赖关系的任务图 (磁盘) |
-| 关系 | 无 | `blockedBy` + `blocks` 边 |
+| 关系 | 无 | `blockedBy` 边 |
 | 状态追踪 | 做完没做完 | `pending` -> `in_progress` -> `completed` |
 | 持久化 | 压缩后丢失 | 压缩和重启后存活 |
 

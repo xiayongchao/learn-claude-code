@@ -38,6 +38,7 @@ Key insight: "Don't put everything in the system prompt. Load on demand."
 import os
 import re
 import subprocess
+import yaml
 from pathlib import Path
 
 from anthropic import Anthropic
@@ -75,11 +76,10 @@ class SkillLoader:
         match = re.match(r"^---\n(.*?)\n---\n(.*)", text, re.DOTALL)
         if not match:
             return {}, text
-        meta = {}
-        for line in match.group(1).strip().splitlines():
-            if ":" in line:
-                key, val = line.split(":", 1)
-                meta[key.strip()] = val.strip()
+        try:
+            meta = yaml.safe_load(match.group(1)) or {}
+        except yaml.YAMLError:
+            meta = {}
         return meta, match.group(2).strip()
 
     def get_descriptions(self) -> str:
@@ -202,7 +202,8 @@ def agent_loop(messages: list):
                     output = handler(**block.input) if handler else f"Unknown tool: {block.name}"
                 except Exception as e:
                     output = f"Error: {e}"
-                print(f"> {block.name}: {str(output)[:200]}")
+                print(f"> {block.name}:")
+                print(str(output)[:200])
                 results.append({"type": "tool_result", "tool_use_id": block.id, "content": str(output)})
         messages.append({"role": "user", "content": results})
 
